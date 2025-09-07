@@ -1,5 +1,6 @@
 from mesa import Agent
 import random
+import logging
 
 
 class cell_agent(Agent):
@@ -14,6 +15,7 @@ class cell_agent(Agent):
         self.history = [property_value]
 
     def upgrade(self, upgrade_factor=1.5, max_rent_increase=None):
+        old_value = self.property_value
         self.property_value *= upgrade_factor
         # if max_rent_increase:
         #     self.rent = min(
@@ -23,6 +25,9 @@ class cell_agent(Agent):
         #     self.rent *= upgrade_factor
         self.is_upgraded = True
         self.history.append(self.property_value)
+        logging.info(
+            f"🏠 Cell at {self.pos} was upgraded. Property value increased from {old_value:.0f} to {self.property_value:.0f}."
+        )
 
     def step_cell(self):
         # self.property_value *= 1 + self.model.max_rent_increase
@@ -87,6 +92,9 @@ class resident_agent(Agent):
 
         best_apartment = None
         best_happiness = self.happiness_factor
+        logging.debug(
+            f"Resident {self.unique_id} at {self.pos} is searching for a new home (current happiness: {self.happiness_factor:.2f})."
+        )
 
         for nx, ny in neighborhood:
             empty_ids = self.model.empty_apartments_layer.data[nx, ny]
@@ -105,7 +113,14 @@ class resident_agent(Agent):
         if best_apartment:
             # Leave old apartment
             if self.apartment is not None:
-                self.apartment.occupied = Fals
+                self.apartment.occupied = False
+            logging.info(
+                f"✅ Resident {self.unique_id} FOUND better home. Moving from {x, y} to {best_apartment.position} (happiness {self.happiness_factor:.2f} -> {best_happiness:.2f})."
+            )
+        else:
+            logging.info(
+                f"❌ Resident {self.unique_id} at {x, y} STAYING. No better options found."
+            )
 
 
 class developer_agent(Agent):
@@ -142,6 +157,9 @@ class developer_agent(Agent):
             potential_roi >= effective_roi_threshold
             and random.random() < self.investment_aggressiveness
         ):
+            logging.info(
+                f"📈 Developer {self.unique_id} is upgrading cell at {cell.pos} (Potential ROI: {potential_roi:.2f})."
+            )
             cell.upgrade()
             # cell.upgrade(max_rent_increase=self.model.max_rent_increase)
 

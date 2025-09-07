@@ -1,7 +1,6 @@
 import mesa
 from mesa.visualization import (
     CommandConsole,
-    Slider,
     SolaraViz,
     make_space_component,
     make_plot_component,
@@ -9,6 +8,17 @@ from mesa.visualization import (
 
 from agents import cell_agent, resident_agent, developer_agent
 from model import GentrificationModel
+
+import logging
+
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)-8s %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    # filename="simulation.log",
+    # filemode="w",
+)
 
 
 def agent_portrayal(agent):
@@ -67,7 +77,7 @@ lineplot_component = make_plot_component(
     post_process=post_process_lines,
 )
 
-model = GentrificationModel()
+model_instance = GentrificationModel()
 
 renderer = make_space_component(
     agent_portrayal=agent_portrayal,
@@ -76,7 +86,7 @@ renderer = make_space_component(
 renderer.post_process = post_process_space
 
 page = SolaraViz(
-    model,
+    model_instance,
     components=[
         renderer,
         lineplot_component,
@@ -85,4 +95,5 @@ page = SolaraViz(
     name="Urban Growth and Gentrification Model",
     model_params=model_params,
 )
+# This is required for Solara to render the page
 page

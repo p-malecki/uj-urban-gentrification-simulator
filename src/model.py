@@ -5,6 +5,8 @@ from mesa.datacollection import DataCollector
 import random
 import numpy as np
 from typing import List, Set, Tuple
+import logging
+
 
 from agents import cell_agent, resident_agent, developer_agent
 
@@ -36,12 +38,17 @@ class GentrificationModel(Model):
         cells_rents=None,
     ):
         super().__init__()
+        self.step_count = 0
         self.grid_size = grid_size
         self.num_residents = num_residents
         self.num_developers = num_developers
         self.residents_income = residents_income
         self.grid_density = grid_density
         self.cells_rents = cells_rents
+
+        logging.info(
+            f"Initializing GentrificationModel with {num_residents} residents and {num_developers} developers."
+        )
 
         self.grid = MultiGrid(grid_size, grid_size, torus=False)
 
@@ -133,6 +140,9 @@ class GentrificationModel(Model):
                 )
 
     def step(self):
+        self.step_count += 1
+        logging.info(f"--- Step {self.step_count} ---")
+
         # 1. Adjust rents
         for x in range(self.grid_size):
             for y in range(self.grid_size):
