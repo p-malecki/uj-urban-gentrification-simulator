@@ -172,3 +172,9 @@ poetry.toml
 
 # LSP config files
 pyrightconfig.json
+
+### macOS ###
+# General
+.DS_Store
+.AppleDouble
+.LSOverride
