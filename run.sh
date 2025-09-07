@@ -5,7 +5,7 @@ pushd src > /dev/null
 
 source ./solara-env/bin/activate
 
-solara run app.py &
+solara run app.py
 
 sleep 2
 
