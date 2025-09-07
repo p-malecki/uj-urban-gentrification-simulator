@@ -1,4 +1,5 @@
 import mesa
+import solara
 from mesa.visualization import (
     SolaraViz,
     make_space_component,
@@ -12,7 +13,7 @@ from model import GentrificationModel
 def agent_portrayal(agent):
     if isinstance(agent, developer_agent):
         return {
-            "marker": "^",
+            "marker": "x",
             "color": "purple",
             "markersize": 15,
         }
@@ -38,6 +39,19 @@ model_params = {
     "num_developers": 5,
     "residents_income": [4242, 4242, 4500, 5080, 5680, 6427, 7365, 8567, 10409, 14224],
 }
+
+
+def model_description(model=None):
+    solara.Markdown(
+        """
+        # Urban Growth and Gentrification Model
+        This model simulates the dynamics of urban gentrification.
+        ## It includes three types of agents:
+        - **Residents (Yellow/Red Circles)**: Seek affordable housing based on their income. They may be displaced if rent becomes too high.
+        - **Developers (Purple Crosses):** Look for properties with high potential return on investment to upgrade.
+        - **Cells (Blue/Green Squares):** Represent parcels of land. Upgraded cells turn green.
+        """
+    )
 
 
 def post_process_space(ax):
@@ -73,6 +87,7 @@ model_instance = GentrificationModel(**model_params)
 page = SolaraViz(
     model_instance,
     components=[
+        model_description,
         renderer,
         lineplot_component,
     ],
