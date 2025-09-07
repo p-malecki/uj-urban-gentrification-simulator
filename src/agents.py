@@ -2,14 +2,18 @@ from mesa import Agent
 import random
 import logging
 
+RENT_FACTOR = 0.05
+MINIMUM_RESIDENCE_PERIOD = 2
+HAPPINESS_FACTOR_THRESHOLD = 0.5
+
 
 class cell_agent(Agent):
     def __init__(self, model, property_value, location_factor):
         super().__init__(model)
         self.model = model
-        self.pos = None  # Required for grid placement
+        self.position = None
         self.property_value = property_value
-        self.rent = property_value * 0.05
+        self.rent = property_value * RENT_FACTOR
         self.is_upgraded = False
         self.location_factor = location_factor
         self.history = [property_value]
@@ -17,7 +21,7 @@ class cell_agent(Agent):
     def upgrade(self, upgrade_factor=1.5, max_rent_increase=None):
         old_value = self.property_value
         self.property_value *= upgrade_factor
-        # if max_rent_increase:
+        # if max_rent_increase: # TODO: add max rent policy
         #     self.rent = min(
         #         self.rent * upgrade_factor, self.rent * (1 + max_rent_increase)
         #     )
@@ -26,10 +30,11 @@ class cell_agent(Agent):
         self.is_upgraded = True
         self.history.append(self.property_value)
         logging.info(
-            f"🏠 Cell at {self.pos} was upgraded. Property value increased from {old_value:.0f} to {self.property_value:.0f}."
+            f"🏠 Cell at {self.position} was upgraded. Property value increased from {old_value:.0f} to {self.property_value:.0f}."
         )
 
     def step_cell(self):
+        # TODO: increase rent once per X months
         # self.property_value *= 1 + self.model.max_rent_increase
         pass
 
@@ -64,13 +69,16 @@ class resident_agent(Agent):
         """Resident decides whether to stay or move."""
         self.time_since_last_move += 1
 
-        # Threshold for moving: too low happiness
-        if self.happiness_factor < 0.5 and self.time_since_last_move > 2:
+        # Move when happiness is too low
+        if (
+            self.happiness_factor < HAPPINESS_FACTOR_THRESHOLD
+            and self.time_since_last_move > MINIMUM_RESIDENCE_PERIOD
+        ):
             self.move_to_new_apartment()
 
     def move_to_new_apartment(self):
         """Search neighborhood for a better apartment."""
-        x, y = self.pos
+        x, y = self.position
         neighborhood = self.model.grid.get_neighborhood(
             (x, y),
             moore=True,
@@ -81,7 +89,7 @@ class resident_agent(Agent):
         best_apartment = None
         best_happiness = self.happiness_factor
         logging.debug(
-            f"Resident {self.unique_id} at {self.pos} is searching for a new home (current happiness: {self.happiness_factor:.2f})."
+            f"Resident {self.unique_id} at {self.position} is searching for a new home (current happiness: {self.happiness_factor:.2f})."
         )
 
         for nx, ny in neighborhood:
@@ -125,28 +133,29 @@ class developer_agent(Agent):
         self.scan_radius = scan_radius
 
     def step(self):
+        pass
         # Scan neighborhood for cheap properties
-        neighbors = self.model.grid.get_neighborhood(
-            self.pos, moore=True, radius=self.scan_radius
-        )
-        candidate_cells = [
-            c for c in neighbors if isinstance(c, cell_agent) and not c.is_upgraded
-        ]
-        if not candidate_cells:
-            return
-        cell = random.choice(candidate_cells)
-        potential_roi = (
-            cell.property_value * 1.5 - cell.property_value
-        ) / cell.property_value
-        effective_roi_threshold = self.roi_threshold * (
-            1  # - self.model.tax_incentive_factor
-        )
-        if (
-            potential_roi >= effective_roi_threshold
-            and random.random() < self.investment_aggressiveness
-        ):
-            logging.info(
-                f"📈 Developer {self.unique_id} is upgrading cell at {cell.pos} (Potential ROI: {potential_roi:.2f})."
-            )
-            cell.upgrade()
-            # cell.upgrade(max_rent_increase=self.model.max_rent_increase)
+        # neighbors = self.model.grid.get_neighborhood(
+        #     self.position, moore=True, radius=self.scan_radius
+        # )
+        # candidate_cells = [
+        #     c for c in neighbors if isinstance(c, cell_agent) and not c.is_upgraded
+        # ]
+        # if not candidate_cells:
+        #     return
+        # cell = random.choice(candidate_cells)
+        # potential_roi = (
+        #     cell.property_value * 1.5 - cell.property_value
+        # ) / cell.property_value
+        # effective_roi_threshold = self.roi_threshold * (
+        #     1  # - self.model.tax_incentive_factor
+        # )
+        # if (
+        #     potential_roi >= effective_roi_threshold
+        #     and random.random() < self.investment_aggressiveness
+        # ):
+        #     logging.info(
+        #         f"📈 Developer {self.unique_id} is upgrading cell at {cell.position} (Potential ROI: {potential_roi:.2f})."
+        #     )
+        #     cell.upgrade()
+        #     # cell.upgrade(max_rent_increase=self.model.max_rent_increase)

@@ -26,7 +26,9 @@ def agent_portrayal(agent):
     elif isinstance(agent, cell_agent):
         return {
             "marker": "s",
-            "color": "lightblue" if not agent.is_upgraded else "lightgreen",
+            "color": (
+                "lightblue" if not agent.is_upgraded else "lightgreen"
+            ),  # TODO: add different cell types that are distinct from residential
             "markersize": 30,
         }
     # A fallback for any unexpected agent types
