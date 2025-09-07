@@ -1,6 +1,5 @@
 import mesa
 from mesa.visualization import (
-    CommandConsole,
     SolaraViz,
     make_space_component,
     make_plot_component,
@@ -9,46 +8,28 @@ from mesa.visualization import (
 from agents import cell_agent, resident_agent, developer_agent
 from model import GentrificationModel
 
-import logging
-
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)-8s %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-    # filename="simulation.log",
-    # filemode="w",
-)
-
 
 def agent_portrayal(agent):
-    if isinstance(agent, cell_agent):
+    if isinstance(agent, developer_agent):
         return {
-            "Shape": "rect",
-            "w": 1,
-            "h": 1,
-            "Filled": True,
-            "Layer": 0,
-            "Color": "lightblue" if not agent.is_upgraded else "lightgreen",
-            "text": f"{int(agent.property_value)}",
-            "text_color": "black",
+            "marker": "^",
+            "color": "purple",
+            "markersize": 15,
         }
     elif isinstance(agent, resident_agent):
         return {
-            "Shape": "circle",
-            "r": 0.3,
-            "Filled": True,
-            "Layer": 1,
-            "Color": "yellow" if agent.status != "displaced" else "red",
+            "marker": "o",
+            "color": "yellow" if agent.status != "displaced" else "red",
+            "markersize": 8,
         }
-    elif isinstance(agent, developer_agent):
+    elif isinstance(agent, cell_agent):
         return {
-            "Shape": "triangle",
-            "r": 0.4,
-            "Filled": True,
-            "Layer": 2,
-            "Color": "purple",
+            "marker": "s",
+            "color": "lightblue" if not agent.is_upgraded else "lightgreen",
+            "markersize": 30,
         }
+    # A fallback for any unexpected agent types
+    return {"marker": "x", "color": "magenta", "markersize": 5}
 
 
 model_params = {
@@ -63,10 +44,14 @@ def post_process_space(ax):
     ax.set_aspect("equal")
     ax.set_xticks([])
     ax.set_yticks([])
+    ax.set_xlim(-0.5, model_params["grid_size"] - 0.5)
+    ax.set_ylim(-0.5, model_params["grid_size"] - 0.5)
 
 
 def post_process_lines(ax):
     ax.legend(loc="center left", bbox_to_anchor=(1, 0.9))
+    ax.set_xlabel("Step")
+    ax.set_ylabel("Value")
 
 
 lineplot_component = make_plot_component(
@@ -77,23 +62,21 @@ lineplot_component = make_plot_component(
     post_process=post_process_lines,
 )
 
-model_instance = GentrificationModel()
-
 renderer = make_space_component(
     agent_portrayal=agent_portrayal,
     backend="matplotlib",
 )
 renderer.post_process = post_process_space
 
+model_instance = GentrificationModel(**model_params)
+
 page = SolaraViz(
     model_instance,
     components=[
         renderer,
         lineplot_component,
-        CommandConsole,
     ],
     name="Urban Growth and Gentrification Model",
-    model_params=model_params,
 )
 # This is required for Solara to render the page
 page

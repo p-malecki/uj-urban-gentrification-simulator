@@ -33,12 +33,6 @@ class cell_agent(Agent):
         # self.property_value *= 1 + self.model.max_rent_increase
         pass
 
-    def step_resident(self):
-        pass
-
-    def step_developer(self):
-        pass
-
 
 class resident_agent(Agent):
     def __init__(self, model, income, searching_radius=1):
@@ -61,24 +55,18 @@ class resident_agent(Agent):
         """Happiness = income / local rent."""
         if self.apartment is not None:
             x, y = self.apartment.position
-            local_rent = self.model.rent_layer[x, y]
+            local_rent = self.model.rent_layer.data[x, y]
             self.happiness_factor = self.income / (local_rent + 1e-6)
         else:
             self.happiness_factor = 0
 
-    def step_resident(self):
+    def step(self):
         """Resident decides whether to stay or move."""
         self.time_since_last_move += 1
 
         # Threshold for moving: too low happiness
         if self.happiness_factor < 0.5 and self.time_since_last_move > 2:
             self.move_to_new_apartment()
-
-    def step_cell(self):
-        pass
-
-    def step_developer(self):
-        pass
 
     def move_to_new_apartment(self):
         """Search neighborhood for a better apartment."""
@@ -136,7 +124,7 @@ class developer_agent(Agent):
         self.investment_aggressiveness = investment_aggressiveness
         self.scan_radius = scan_radius
 
-    def step_developer(self):
+    def step(self):
         # Scan neighborhood for cheap properties
         neighbors = self.model.grid.get_neighborhood(
             self.pos, moore=True, radius=self.scan_radius
@@ -162,9 +150,3 @@ class developer_agent(Agent):
             )
             cell.upgrade()
             # cell.upgrade(max_rent_increase=self.model.max_rent_increase)
-
-    def step_cell(self):
-        pass
-
-    def step_resident(self):
-        pass

@@ -1,29 +1,33 @@
-from mesa import Agent, Model
-from mesa.space import MultiGrid, PropertyLayer
+import logging
+from mesa import Model
+from mesa.space import MultiGrid
 from mesa.datacollection import DataCollector
-
+from mesa.space import PropertyLayer
 import random
 import numpy as np
-from typing import List, Set, Tuple
-import logging
-
+from typing import Tuple
 
 from agents import cell_agent, resident_agent, developer_agent
 
+# --- SETUP LOGGING ---
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)-8s %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+
 
 class Apartment:
-    _id_counter = 0
-
-    def __init__(self, position: Tuple[int, int], rent: float, occupied: bool = False):
+    def __init__(
+        self, position: Tuple[int, int], index: int, rent: float, occupied: bool = False
+    ):
         self.position = position
+        self.index = index
         self.rent = rent
         self.occupied = occupied
 
-        self.id = f"apt_{position[0]}_{position[1]}_{Apartment._id_counter}"
-        Apartment._id_counter += 1
-
     def __repr__(self):
-        return f"Apartment(id={self.id}, pos={self.position}, rent={self.rent}, occupied={self.occupied})"
+        return f"Apartment(pos={self.position}, index={self.index}, rent={self.rent}, occupied={self.occupied})"
 
 
 class GentrificationModel(Model):
@@ -33,47 +37,36 @@ class GentrificationModel(Model):
         grid_size=10,
         num_residents=50,
         num_developers=5,
-        residents_income=[10000, 20000, 30000],
+        residents_income=None,
         grid_density=None,
         cells_rents=None,
     ):
         super().__init__()
         self.step_count = 0
+        logging.info(
+            f"Initializing GentrificationModel with {num_residents} residents and {num_developers} developers."
+        )
+
         self.grid_size = grid_size
         self.num_residents = num_residents
         self.num_developers = num_developers
-        self.residents_income = residents_income
-        self.grid_density = grid_density
-        self.cells_rents = cells_rents
-
-        logging.info(
-            f"Initializing GentrificationModel with {num_residents} residents and {num_developers} developers."
+        self.residents_income = (
+            residents_income if residents_income is not None else [10000, 20000, 30000]
         )
 
         self.grid = MultiGrid(grid_size, grid_size, torus=False)
 
         # --- Property layers ---
-
-        # Each cell will hold a list of Apartment objects
         self.apartments_layer = PropertyLayer(
             "apartments", grid_size, grid_size, default_value=None, dtype=object
         )
-
-        # Each cell will hold a set of indexes of empty apartments
         self.empty_apartments_layer = PropertyLayer(
             "empty_apartments", grid_size, grid_size, default_value=None, dtype=object
         )
-
-        # Each cell will have a base rent value
         self.rent_layer = PropertyLayer(
-            "rent", grid_size, grid_size, default_value=1000.0
+            "rent", grid_size, grid_size, default_value=1000.0, dtype=np.float64
         )
 
-        self.grid.add_property_layer(self.apartments_layer)
-        self.grid.add_property_layer(self.empty_apartments_layer)
-        self.grid.add_property_layer(self.rent_layer)
-
-        # --- Initialize with some random apartments ---
         self._initialize_apartments()
 
         # Create Cell Agents
@@ -88,18 +81,20 @@ class GentrificationModel(Model):
                 self.grid.place_agent(cell, (x, y))
 
         # Create Resident Agents
-        for i in range(num_residents):
-            income_class = random.choices(["L", "M", "H"], weights=[0.5, 0.3, 0.2])[0]
-            income = {"L": 50, "M": 100, "H": 200}[income_class]
+        for _ in range(self.num_residents):
+            income = random.choice(self.residents_income)
             resident = resident_agent(self, income)
-            x, y = random.randrange(grid_size), random.randrange(grid_size)
+            x, y = self.random.randrange(grid_size), self.random.randrange(grid_size)
             self.grid.place_agent(resident, (x, y))
 
         # Create Developer Agents
-        for i in range(num_developers):
+        for _ in range(self.num_developers):
             developer = developer_agent(self)
-            x, y = random.randrange(grid_size), random.randrange(grid_size)
+            x, y = self.random.randrange(grid_size), self.random.randrange(grid_size)
             self.grid.place_agent(developer, (x, y))
+
+        # Assign initial apartments to all residents
+        self._assign_initial_apartments()
 
         # Data Collector
         self.datacollector = DataCollector(
@@ -110,40 +105,68 @@ class GentrificationModel(Model):
         )
 
     def avg_property_value(self):
-        cells = [a for a in self.agents if isinstance(a, cell_agent)]
+        cells = self.agents_by_type[cell_agent]
+        if not cells:
+            return 0
         return sum([c.property_value for c in cells]) / len(cells)
 
     def displaced_residents(self):
-        residents = [a for a in self.agents if isinstance(a, resident_agent)]
+        residents = self.agents_by_type[resident_agent]
         return sum([1 for r in residents if r.status == "displaced"])
 
     def _initialize_apartments(self):
         for x in range(self.grid_size):
             for y in range(self.grid_size):
-                num_apts = np.random.randint(
-                    1, 50
-                )  # TODO: depending on cell type select range
+                num_apts = np.random.randint(1, 5)  # Lowered for performance
                 apartments = [
                     Apartment(
                         position=(x, y),
+                        index=i,
                         rent=np.random.randint(800, 2000),
                         occupied=False,
                     )
-                    for _ in range(num_apts)
+                    for i in range(num_apts)
                 ]
                 self.apartments_layer.set_cell((x, y), apartments)
                 self.empty_apartments_layer.set_cell(
                     (x, y), set(range(len(apartments)))
                 )
-                self.rent_layer.set_cell(
-                    (x, y), np.mean([apt.rent for apt in apartments])
+                if apartments:
+                    self.rent_layer.set_cell(
+                        (x, y), np.mean([apt.rent for apt in apartments])
+                    )
+                else:
+                    self.rent_layer.set_cell((x, y), 0)
+
+    def _assign_initial_apartments(self):
+        logging.info("Assigning initial apartments...")
+        residents = self.agents_by_type[resident_agent]
+        for resident in residents:
+            assigned = False
+            attempts = 0
+            while not assigned and attempts < self.grid_size**2:
+                x, y = self.random.randrange(self.grid_size), self.random.randrange(
+                    self.grid_size
                 )
+                empty_ids = self.empty_apartments_layer.data[x, y]
+                if empty_ids:
+                    apt_index = empty_ids.pop()
+                    apartment = self.apartments_layer.data[x, y][apt_index]
+                    resident.assign_apartment(apartment)
+                    self.grid.move_agent(resident, (x, y))
+                    assigned = True
+            if not assigned:
+                logging.warning(
+                    f"Could not assign an initial apartment for resident {resident.unique_id}"
+                )
+                resident.status = "displaced"
+        logging.info("Initial assignment complete.")
 
     def step(self):
         self.step_count += 1
         logging.info(f"--- Step {self.step_count} ---")
 
-        # 1. Adjust rents
+        # Adjust rents
         for x in range(self.grid_size):
             for y in range(self.grid_size):
                 current_rent = self.rent_layer.data[x, y]
@@ -151,10 +174,7 @@ class GentrificationModel(Model):
                 new_rent = max(1, current_rent * adjustment_factor)
                 self.rent_layer.set_cell((x, y), new_rent)
 
-        # 2. Activate agents by type in a random order
-        self.agents.shuffle().do("step_cell")
-        self.agents.shuffle().do("step_resident")
-        self.agents.shuffle().do("step_developer")
+        # Activate agents
+        self.agents.shuffle().do("step")
 
-        # 3. Collect data
         self.datacollector.collect(self)
