@@ -20,7 +20,7 @@ def agent_portrayal(agent):
     elif isinstance(agent, resident_agent):
         return {
             "marker": "o",
-            "color": "yellow" if agent.status != "displaced" else "red",
+            "color": "yellow" if agent.is_settled else "red",
             "markersize": 8,
         }
     elif isinstance(agent, cell_agent):
@@ -36,8 +36,8 @@ def agent_portrayal(agent):
 
 
 model_params = {
-    "grid_size": 10,
-    "num_residents": 50,
+    "grid_size": 5,
+    "num_residents": 10,
     "num_developers": 5,
     "residents_income": [4242, 4242, 4500, 5080, 5680, 6427, 7365, 8567, 10409, 14224],
 }
@@ -87,7 +87,7 @@ renderer.post_process = post_process_space
 model_instance = GentrificationModel(**model_params)
 
 page = SolaraViz(
-    model_instance,
+    model_instance,  # ! TODO: fix bug: model_params are not used when reset button is pressed
     components=[
         model_description,
         renderer,

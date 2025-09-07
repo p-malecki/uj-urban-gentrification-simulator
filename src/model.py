@@ -23,11 +23,18 @@ class Apartment:
     ):
         self.position = position
         self.index = index
+        # self.value = value # ! compute rent based on value
         self.rent = rent
         self.occupied = occupied
 
     def __repr__(self):
         return f"Apartment(pos={self.position}, index={self.index}, rent={self.rent}, occupied={self.occupied})"
+
+    def __eq__(self, other):
+        return self.rent == other.rent
+
+    def __lt__(self, other):
+        return self.rent < other.rent
 
 
 class GentrificationModel(Model):
@@ -90,9 +97,33 @@ class GentrificationModel(Model):
                     (x - self.grid_size / 2) ** 2 + (y - self.grid_size / 2) ** 2
                 ) ** 0.5
                 location_factor = 1 / (distance_to_center + 1)
-                property_value = random.uniform(50, 150) * location_factor
+                # Property value is computed based on summarized value of its apartments
+                # property_value = (
+                #     random.uniform(50, 150) * location_factor
+                # ) # prev
+
+                apartments_count = len(self.apartments_layer.data[x, y])
+                property_value = sum(a.rent for a in self.apartments_layer.data[x, y])
+                # ! TODO: take under account location_factor
+
                 logging.info(
-                    f"distance_to_center {distance_to_center} location_factor {location_factor} property_value {property_value} "
+                    "📊 Cell Report (x=%d, y=%d)\n"
+                    "  • Distance to center : %.2f\n"
+                    "  • Location factor    : %.2f\n"
+                    "  • Property value     : %.2f\n"
+                    "  • Apartments count   : %d\n"
+                    "  • Avg rent           : %.2f\n"
+                    "  • Max rent           : %.2f\n"
+                    "  • Min rent           : %.2f",
+                    x,
+                    y,
+                    distance_to_center,
+                    location_factor,
+                    property_value,
+                    apartments_count,
+                    property_value / apartments_count if apartments_count > 0 else 0,
+                    max(apt.rent for apt in self.apartments_layer.data[x, y]),
+                    min(apt.rent for apt in self.apartments_layer.data[x, y]),
                 )
 
                 cell = cell_agent(self, property_value, location_factor)
@@ -125,7 +156,9 @@ class GentrificationModel(Model):
                     Apartment(
                         position=(x, y),
                         index=i,
-                        rent=np.random.randint(800, 2000),
+                        rent=np.random.randint(
+                            2000, 10000
+                        ),  # TODO: adjust rents ranges based on the cell type, use different distribution than uniform
                         occupied=False,
                     )
                     for i in range(num_apts)
@@ -156,14 +189,16 @@ class GentrificationModel(Model):
                 if empty_ids:
                     apt_index = empty_ids.pop()
                     apartment = self.apartments_layer.data[x, y][apt_index]
-                    resident.assign_apartment(apartment)
+                    resident.assign_apartment(
+                        apartment
+                    )  # ! ASSING RESIDENTS BASED ON THEIR INCOME AND RENT (HAPPINESS_FACTOR)
                     self.grid.move_agent(resident, (x, y))
                     assigned = True
             if not assigned:
                 logging.warning(
                     f"Could not assign an initial apartment for resident {resident.unique_id}"
                 )
-                resident.status = "displaced"
+                resident.is_settled = False
         logging.info("Initial assignment complete.")
 
     def avg_property_value(self):
@@ -174,7 +209,7 @@ class GentrificationModel(Model):
 
     def displaced_residents(self):
         residents = self.agents_by_type[resident_agent]
-        return sum([1 for r in residents if r.status == "displaced"])
+        return sum([1 for r in residents if not r.is_settled])
 
     def step(self):
         self.step_count += 1

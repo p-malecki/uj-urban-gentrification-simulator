@@ -3,8 +3,10 @@ import random
 import logging
 
 RENT_FACTOR = 0.05
-MINIMUM_RESIDENCE_PERIOD = 2
-HAPPINESS_FACTOR_THRESHOLD = 0.5
+MINIMUM_RESIDENCE_PERIOD = 3
+HAPPINESS_FACTOR_THRESHOLD = 1
+HAPPINESS_DECAY_RATE = 0.95  # check: 0.98
+SEARCHING_RADIUS_INCREASE_RATE = 1.1
 
 
 class cell_agent(Agent):
@@ -12,8 +14,10 @@ class cell_agent(Agent):
         super().__init__(model)
         self.model = model
         self.position = None
-        self.property_value = property_value
-        self.rent = property_value * RENT_FACTOR
+        self.property_value = (
+            property_value  # ! TODO: compute property_value based on apartments value
+        )
+        # self.rent = property_value * RENT_FACTOR
         self.is_upgraded = False
         self.location_factor = location_factor
         self.history = [property_value]
@@ -26,7 +30,7 @@ class cell_agent(Agent):
         #         self.rent * upgrade_factor, self.rent * (1 + max_rent_increase)
         #     )
         # else:
-        #     self.rent *= upgrade_factor
+        #     self.rent *= upgrade_factor # ! TODO: increase apartments value
         self.is_upgraded = True
         self.history.append(self.property_value)
         logging.info(
@@ -35,7 +39,6 @@ class cell_agent(Agent):
 
     def step_cell(self):
         # TODO: increase rent once per X months
-        # self.property_value *= 1 + self.model.max_rent_increase
         pass
 
 
@@ -48,37 +51,49 @@ class resident_agent(Agent):
         self.time_since_last_move = 0
         self.searching_radius = searching_radius
         # self.affordability_threshold = affordability_threshold
-        self.status = "resident"
+        self.is_settled = False
+
+    def __repr__(self):
+        return f"Resident(unique_id={self.unique_id}, income={self.income}, happiness_factor={self.happiness_factor}, time_since_last_move={self.time_since_last_move}, searching_radius={self.searching_radius}, is_settled={self.is_settled}), apartment={self.apartment}"
 
     def assign_apartment(self, apartment):
         """Move resident into an apartment."""
         self.apartment = apartment
+        self.model.grid.move_agent(self, apartment.position)
         apartment.occupied = True
-        self.update_happiness()
+        self.time_since_last_move = 0
+        self.is_settled = True
 
     def update_happiness(self):
-        """Happiness = income / local rent."""
+        """Happiness = (income / local rent) * (decay_rate ^ time_since_last_move)."""
         if self.apartment is not None:
             x, y = self.apartment.position
             local_rent = self.model.rent_layer.data[x, y]
-            self.happiness_factor = self.income / (local_rent + 1e-6)
+            base_happiness = self.income / (local_rent + 1e-6)
+            time_decay = HAPPINESS_DECAY_RATE**self.time_since_last_move
+            self.happiness_factor = base_happiness * time_decay
         else:
             self.happiness_factor = 0
 
-    def step(self):
-        """Resident decides whether to stay or move."""
-        self.time_since_last_move += 1
-
-        # Move when happiness is too low
-        if (
-            self.happiness_factor < HAPPINESS_FACTOR_THRESHOLD
-            and self.time_since_last_move > MINIMUM_RESIDENCE_PERIOD
-        ):
-            self.move_to_new_apartment()
-
     def move_to_new_apartment(self):
-        """Search neighborhood for a better apartment."""
-        x, y = self.position
+        """Search neighborhood for a better apartment. Expand search radius if not moved recently."""
+
+        # Increase search radius based on how long the resident hasn't moved
+        self.searching_radius = max(
+            1,
+            int(
+                self.searching_radius
+                * (SEARCHING_RADIUS_INCREASE_RATE**self.time_since_last_move)
+            ),
+        )
+
+        if self.is_settled and self.apartment:
+            x, y = self.apartment.position
+        else:
+            (x, y) = int(self.model.grid.width / 2), int(
+                self.model.grid.height / 2
+            )  # TODO: currently resident w/o apt starts search in grid center
+
         neighborhood = self.model.grid.get_neighborhood(
             (x, y),
             moore=True,
@@ -89,7 +104,7 @@ class resident_agent(Agent):
         best_apartment = None
         best_happiness = self.happiness_factor
         logging.debug(
-            f"Resident {self.unique_id} at {self.position} is searching for a new home (current happiness: {self.happiness_factor:.2f})."
+            f"Resident {self.unique_id} at {(x, y)} is searching for a new home (current happiness: {self.happiness_factor:.2f})."
         )
 
         for nx, ny in neighborhood:
@@ -97,19 +112,27 @@ class resident_agent(Agent):
             if not empty_ids:
                 continue
 
-            # Check one random empty apartment in this cell
-            idx = random.choice(list(empty_ids))
-            candidate_apartment = self.model.apartments_layer.data[nx, ny][idx]
-
-            candidate_happiness = self.income / (candidate_apartment.rent + 1e-6)
-            if candidate_happiness > best_happiness:
-                best_apartment = candidate_apartment
-                best_happiness = candidate_happiness
+            # TODO: check alternative selection option (one random empty apartment per cell)
+            # idx = random.choice(
+            #     list(empty_ids)
+            # )  # Check one random empty apartment in this cell
+            for idx in list(empty_ids):  # Check all empty apartments in this cell
+                candidate_apartment = self.model.apartments_layer.data[nx, ny][idx]
+                candidate_happiness = self.income / (candidate_apartment.rent + 1e-6)
+                if (
+                    candidate_happiness > best_happiness
+                    and candidate_apartment.rent
+                    < self.income  # Only consider apartments with rent below the resident's income
+                ):
+                    best_apartment = candidate_apartment
+                    best_happiness = candidate_happiness
 
         if best_apartment:
             # Leave old apartment
             if self.apartment is not None:
                 self.apartment.occupied = False
+            # Move into new apartment
+            self.assign_apartment(best_apartment)
             logging.info(
                 f"✅ Resident {self.unique_id} FOUND better home. Moving from {x, y} to {best_apartment.position} (happiness {self.happiness_factor:.2f} -> {best_happiness:.2f})."
             )
@@ -117,6 +140,21 @@ class resident_agent(Agent):
             logging.info(
                 f"❌ Resident {self.unique_id} at {x, y} STAYING. No better options found."
             )
+
+    def step(self):
+        """Resident decides whether to stay or move."""
+        self.time_since_last_move += 1
+
+        # Move when happiness is below HAPPINESS_FACTOR_THRESHOLD
+        if not self.is_settled or (
+            self.happiness_factor < HAPPINESS_FACTOR_THRESHOLD
+            and self.time_since_last_move > MINIMUM_RESIDENCE_PERIOD
+        ):
+            self.move_to_new_apartment()
+
+        # Apply happiness decay after each step
+        self.update_happiness()
+        logging.info(self)
 
 
 class developer_agent(Agent):
