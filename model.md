@@ -1,16 +1,16 @@
 # `class GentrificationModel(mesa.Model):`
 Initialized parameters:
 * `grid_size: int` - defines the size of the grid for the simulation (grid_size x grid_size)
-* `population: int` - defines the number of agents in the simulation
-* `pop_income: list[float]` - defines the income levels of the agents in the simulation. Each element in the list corresponds to income of ```1/len(pop_income)``` of population. Eg. [10000, 20000, 30000] means 33.3% of agents earn $1000, 33.3% earn $2000, and 33.3% earn $3000.
+* `num_residents: int` - defines the number of agents in the simulation
+* `residents_income: list[float]` - defines the income levels of the agents in the simulation. Each element in the list corresponds to income of ```1/len(residents_income)``` of residents. Eg. [10000, 20000, 30000] means 33.3% of agents earn $1000, 33.3% earn $2000, and 33.3% earn $3000.
 
     For Poland: `[4242, 4242, 4500, 5080, 5680, 6427, 7365, 8567, 10409, 14224]` (GUS, february 2024)
 * `grid_density: list[list[int]]/np.ndarray` (choose preferred one) - defines densities of grid cells in the simulation. Each element in the list corresponds to the capacity of the grid cell (num of citizens who can live there)
 
-    not required, defaults to `None`, treated as a `[[population / (grid_size ** 2) * 1.05]*grid_size]*grid_size` (every cell has the same density equal to average density + 5%)
+    not required, defaults to `None`, treated as a `[[num_residents / (grid_size ** 2) * 1.05]*grid_size]*grid_size` (every cell has the same density equal to average density + 5%)
 * `cells_rents: list[list[float]]/np.ndarray` (choose preferred one) - defines initial rents of grid cells in the simulation. Each element in the list corresponds to the rent of the grid cell.
 
-    not required, defaults to `None`, treated as a `[[avg(pop_income)]*grid_size]*grid_size` (every cell has the same rent equal to average income of citizens)
+    not required, defaults to `None`, treated as a `[[avg(residents_income)]*grid_size]*grid_size` (every cell has the same rent equal to average income of citizens)
 
 ### For properties, check `mesa.PropertyLayer` and `mesa.grid.add_property_layer()` in Mesa documentation
 For every grid cell I would add properties containing:
