@@ -3,6 +3,7 @@ from mesa import Model
 from mesa.space import MultiGrid
 from mesa.datacollection import DataCollector
 from mesa.space import PropertyLayer
+from mesa.visualization import Slider
 import random
 import numpy as np
 from typing import Tuple
@@ -50,28 +51,47 @@ class GentrificationModel(Model):
     ):
         super().__init__()
         self.step_count = 0
-        logging.info(
-            f"Initializing GentrificationModel with {num_residents} residents and {num_developers} developers."
+        self.grid_size = grid_size.value if isinstance(grid_size, Slider) else grid_size
+        self.num_residents = (
+            num_residents.value if isinstance(num_residents, Slider) else num_residents
+        )
+        self.num_developers = (
+            num_developers.value
+            if isinstance(num_developers, Slider)
+            else num_developers
         )
 
-        self.grid_size = grid_size
-        self.num_residents = num_residents
-        self.num_developers = num_developers
         self.residents_income = (
             residents_income if residents_income is not None else [10000, 20000, 30000]
         )
 
-        self.grid = MultiGrid(grid_size, grid_size, torus=False)
+        self.grid = MultiGrid(self.grid_size, self.grid_size, torus=False)
+
+        logging.info(
+            f"Initializing GentrificationModel with {num_residents} residents and {num_developers} developers."
+        )
 
         # --- Property layers ---
         self.apartments_layer = PropertyLayer(
-            "apartments", grid_size, grid_size, default_value=None, dtype=object
+            "apartments",
+            self.grid_size,
+            self.grid_size,
+            default_value=None,
+            dtype=object,
         )
         self.empty_apartments_layer = PropertyLayer(
-            "empty_apartments", grid_size, grid_size, default_value=None, dtype=object
+            "empty_apartments",
+            self.grid_size,
+            self.grid_size,
+            default_value=None,
+            dtype=object,
         )
         self.rent_layer = PropertyLayer(
-            "rent", grid_size, grid_size, default_value=1000.0, dtype=np.float64
+            "rent",
+            self.grid_size,
+            self.grid_size,
+            default_value=1000.0,
+            dtype=np.float64,
         )
 
         self._initialize_apartments()
@@ -201,14 +221,27 @@ class GentrificationModel(Model):
                 resident.is_settled = False
         logging.info("Initial assignment complete.")
 
+    def get_cell_occupancy(self, cell_agent):
+        pos = cell_agent.pos
+        total_capacity = len(self.apartments_layer.data[pos[0], pos[1]])
+        num_empty = len(self.empty_apartments_layer.data[pos[0], pos[1]])
+        num_occupied = total_capacity - num_empty
+        return num_occupied, total_capacity
+
+    def get_property_value_range(self):
+        cells = self.agents_by_type.get(cell_agent, [])
+        min_val = min(a.property_value for a in cells)
+        max_val = max(a.property_value for a in cells)
+        return min_val, max_val
+
     def avg_property_value(self):
-        cells = self.agents_by_type[cell_agent]
+        cells = self.agents_by_type.get(cell_agent, [])
         if not cells:
             return 0
         return sum([c.property_value for c in cells]) / len(cells)
 
     def displaced_residents(self):
-        residents = self.agents_by_type[resident_agent]
+        residents = self.agents_by_type.get(resident_agent, [])
         return sum([1 for r in residents if not r.is_settled])
 
     def step(self):

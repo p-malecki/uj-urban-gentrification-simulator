@@ -1,7 +1,10 @@
 import mesa
 import solara
+import matplotlib.pyplot as plt
+from matplotlib.colors import to_rgba
 from mesa.visualization import (
     SolaraViz,
+    Slider,
     make_space_component,
     make_plot_component,
 )
@@ -11,34 +14,45 @@ from model import GentrificationModel
 
 
 def agent_portrayal(agent):
+    """Defines how each agent is drawn, mapping data to visual properties."""
     if isinstance(agent, developer_agent):
         return {
             "marker": "x",
-            "color": "purple",
-            "markersize": 15,
+            "facecolor": to_rgba("none"),
+            "edgecolor": to_rgba("purple"),
+            "markersize": 20,
+            "linewidth": 2,
         }
     elif isinstance(agent, resident_agent):
+        color = to_rgba("yellow") if agent.is_settled else to_rgba("red")
         return {
             "marker": "o",
-            "color": "yellow" if agent.is_settled else "red",
-            "markersize": 8,
+            "color": color,
+            "markersize": 20,
         }
     elif isinstance(agent, cell_agent):
-        return {
-            "marker": "s",
-            "color": (
-                "lightblue" if not agent.is_upgraded else "lightgreen"
-            ),  # TODO: add different cell types that are distinct from residential
-            "markersize": 30,
-        }
-    # A fallback for any unexpected agent types
-    return {"marker": "x", "color": "magenta", "markersize": 5}
+        model = agent.model
+        occupied, capacity = model.get_cell_occupancy(agent)
+        occupancy_ratio = occupied / capacity if capacity > 0 else 0
+        markersize = 15 + (30 * occupancy_ratio)
+        min_val, max_val = model.get_property_value_range()
+        if max_val == min_val:
+            normalized_value = 0.5
+        else:
+            normalized_value = (agent.property_value - min_val) / (max_val - min_val)
+
+        colormap = plt.cm.plasma
+        color = colormap(normalized_value)
+        if agent.is_upgraded:
+            color = to_rgba("lightgreen")
+        return {"marker": "s", "color": color, "markersize": markersize}
+    return {"marker": "x", "color": to_rgba("black"), "markersize": 5}
 
 
 model_params = {
-    "grid_size": 5,
-    "num_residents": 10,
-    "num_developers": 5,
+    "grid_size": Slider("Grid size", value=10, min=3, max=25, step=1),
+    "num_residents": Slider("Number of Residents", value=50, min=10, max=200, step=10),
+    "num_developers": Slider("Number of Developers", value=5, min=0, max=20, step=1),
     "residents_income": [4242, 4242, 4500, 5080, 5680, 6427, 7365, 8567, 10409, 14224],
 }
 
@@ -48,10 +62,9 @@ def model_description(model=None):
         """
         # Urban Growth and Gentrification Model
         This model simulates the dynamics of urban gentrification.
-        ## It includes three types of agents:
-        - **Residents (Yellow/Red Circles)**: Seek affordable housing based on their income. They may be displaced if rent becomes too high.
-        - **Developers (Purple Crosses):** Look for properties with high potential return on investment to upgrade.
-        - **Cells (Blue/Green Squares):** Represent parcels of land. Upgraded cells turn green.
+        - **Cells (Squares):** Color indicates property value (blue low, yellow high). Size indicates occupancy. Green are upgraded.
+        - **Residents (Yellow Circles):** Seek affordable housing.
+        - **Developers (Purple Crosses):** Upgrade properties for profit.
         """
     )
 
@@ -70,9 +83,15 @@ def post_process_lines(ax):
     ax.set_ylabel("Value")
 
 
-lineplot_component = make_plot_component(
+avg_property_value_plot = make_plot_component(
     {
         "AveragePropertyValue": "tab:orange",
+    },
+    post_process=post_process_lines,
+)
+
+displaced_residents_plot = make_plot_component(
+    {
         "DisplacedResidents": "tab:cyan",
     },
     post_process=post_process_lines,
@@ -87,13 +106,14 @@ renderer.post_process = post_process_space
 model_instance = GentrificationModel(**model_params)
 
 page = SolaraViz(
-    model_instance,  # ! TODO: fix bug: model_params are not used when reset button is pressed
+    model_instance,
+    model_params=model_params,
     components=[
         model_description,
         renderer,
-        lineplot_component,
+        avg_property_value_plot,
+        displaced_residents_plot,
     ],
     name="Urban Growth and Gentrification Model",
 )
-# This is required for Solara to render the page
-page
+page  # This is required for Solara to render the page
