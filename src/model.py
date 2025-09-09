@@ -9,6 +9,7 @@ import numpy as np
 from typing import Tuple
 
 from agents import cell_agent, resident_agent, developer_agent
+from helpers import gini_coefficient
 
 # --- SETUP LOGGING ---
 logging.basicConfig(
@@ -105,9 +106,46 @@ class GentrificationModel(Model):
         # --- Data Collector ---
         self.datacollector = DataCollector(
             model_reporters={
-                "AveragePropertyValue": self.avg_property_value,
-                "DisplacedResidents": self.displaced_residents,
-            },
+                # Economic
+                "AveragePropertyValue": lambda m: np.mean(
+                    [a.property_value for a in m.agents_by_type.get(cell_agent, [])]
+                ),
+                "AverageRent": lambda m: np.mean(m.rent_layer.data),
+                "PropertyValueGini": lambda m: gini_coefficient(
+                    [a.property_value for a in m.agents_by_type.get(cell_agent, [])]
+                ),
+                "VacancyRate": lambda m: sum(
+                    len(s) for s in m.empty_apartments_layer.data.flatten()
+                )
+                / sum(len(a) for a in m.apartments_layer.data.flatten()),
+                # Social
+                "SettledResidents": lambda m: sum(
+                    1 for a in m.agents_by_type.get(resident_agent, []) if a.is_settled
+                ),
+                "DisplacedResidents": lambda m: sum(
+                    1
+                    for a in m.agents_by_type.get(resident_agent, [])
+                    if not a.is_settled
+                ),
+                "AverageHappiness": lambda m: np.mean(
+                    [
+                        a.happiness_factor
+                        for a in m.agents_by_type.get(resident_agent, [])
+                        if a.is_settled
+                    ]
+                ),
+                "AverageTenure": lambda m: np.mean(
+                    [
+                        a.time_since_last_move
+                        for a in m.agents_by_type.get(resident_agent, [])
+                        if a.is_settled
+                    ]
+                ),
+                # Development
+                "UpgradedProperties": lambda m: sum(
+                    1 for a in m.agents_by_type.get(cell_agent, []) if a.is_upgraded
+                ),
+            }
         )
 
     def _create_cell_agents(self):
@@ -228,21 +266,14 @@ class GentrificationModel(Model):
         num_occupied = total_capacity - num_empty
         return num_occupied, total_capacity
 
+    def get_cell_contents(self, pos):
+        return self.grid.get_cell_list_contents([pos])
+
     def get_property_value_range(self):
         cells = self.agents_by_type.get(cell_agent, [])
         min_val = min(a.property_value for a in cells)
         max_val = max(a.property_value for a in cells)
         return min_val, max_val
-
-    def avg_property_value(self):
-        cells = self.agents_by_type.get(cell_agent, [])
-        if not cells:
-            return 0
-        return sum([c.property_value for c in cells]) / len(cells)
-
-    def displaced_residents(self):
-        residents = self.agents_by_type.get(resident_agent, [])
-        return sum([1 for r in residents if not r.is_settled])
 
     def step(self):
         self.step_count += 1

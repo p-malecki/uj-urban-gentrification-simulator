@@ -1,5 +1,6 @@
 import mesa
 import solara
+import solara.lab
 import matplotlib.pyplot as plt
 from matplotlib.colors import to_rgba
 from mesa.visualization import (
@@ -83,19 +84,46 @@ def post_process_lines(ax):
     ax.set_ylabel("Value")
 
 
-avg_property_value_plot = make_plot_component(
-    {
-        "AveragePropertyValue": "tab:orange",
-    },
+economic_plot = make_plot_component(
+    {"AveragePropertyValue": "orange", "AverageRent": "red"},
     post_process=post_process_lines,
 )
 
-displaced_residents_plot = make_plot_component(
-    {
-        "DisplacedResidents": "tab:cyan",
-    },
+population_plot = make_plot_component(
+    {"SettledResidents": "green", "DisplacedResidents": "cyan"},
     post_process=post_process_lines,
 )
+
+stability_plot = make_plot_component(
+    {"AverageTenure": "blue", "AverageHappiness": "lime"},
+    post_process=post_process_lines,
+)
+
+market_plot = make_plot_component(
+    {"VacancyRate": "gray", "UpgradedProperties": "purple"},
+    post_process=post_process_lines,
+)
+
+inequality_plot = make_plot_component(
+    {"PropertyValueGini": "magenta"},
+    post_process=post_process_lines,
+)
+
+
+# @solara.component
+# def AnalysisTabs(model=None):
+#     with solara.lab.Tabs():
+#         with solara.lab.Tab("Economic"):
+#             economic_plot(model=model)
+#         with solara.lab.Tab("Population"):
+#             population_plot(model=model)
+#         with solara.lab.Tab("Stability"):
+#             stability_plot(model=model)
+#         with solara.lab.Tab("Market"):
+#             market_plot(model=model)
+#         with solara.lab.Tab("Inequality"):
+#             inequality_plot(model=model)
+
 
 renderer = make_space_component(
     agent_portrayal=agent_portrayal,
@@ -111,8 +139,12 @@ page = SolaraViz(
     components=[
         model_description,
         renderer,
-        avg_property_value_plot,
-        displaced_residents_plot,
+        # AnalysisTabs, // TODO: optionally use tabs
+        economic_plot,
+        population_plot,
+        stability_plot,
+        market_plot,
+        inequality_plot,
     ],
     name="Urban Growth and Gentrification Model",
 )
