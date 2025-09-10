@@ -1,6 +1,5 @@
 import numpy as np
 
-
 def gini_coefficient(x):
     x = np.asarray(x, dtype=np.float64)
     if np.amin(x) < 0:

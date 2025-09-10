@@ -6,9 +6,11 @@ from mesa.space import PropertyLayer
 from mesa.visualization import Slider
 import random
 import numpy as np
-from typing import Tuple
 
-from agents import cell_agent, resident_agent, developer_agent
+from model_elements.cell_agent import cell_agent
+from model_elements.resident_agent import resident_agent
+from model_elements.developer_agent import developer_agent
+from model_elements.apartment import Apartment
 from helpers import gini_coefficient
 
 # --- SETUP LOGGING ---
@@ -18,29 +20,7 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
-
-class Apartment:
-    def __init__(
-        self, position: Tuple[int, int], index: int, rent: float, occupied: bool = False
-    ):
-        self.position = position
-        self.index = index
-        # self.value = value # ! compute rent based on value
-        self.rent = rent
-        self.occupied = occupied
-
-    def __repr__(self):
-        return f"Apartment(pos={self.position}, index={self.index}, rent={self.rent}, occupied={self.occupied})"
-
-    def __eq__(self, other):
-        return self.rent == other.rent
-
-    def __lt__(self, other):
-        return self.rent < other.rent
-
-
 class GentrificationModel(Model):
-
     def __init__(
         self,
         grid_size=10,
@@ -73,79 +53,66 @@ class GentrificationModel(Model):
         )
 
         # --- Property layers ---
-        self.apartments_layer = PropertyLayer(
-            "apartments",
+        self.cell_agents_layer = PropertyLayer(
+            "cell_agents",
             self.grid_size,
             self.grid_size,
             default_value=None,
-            dtype=object,
+            dtype=cell_agent,
         )
-        self.empty_apartments_layer = PropertyLayer(
-            "empty_apartments",
-            self.grid_size,
-            self.grid_size,
-            default_value=None,
-            dtype=object,
-        )
-        self.rent_layer = PropertyLayer(
-            "rent",
-            self.grid_size,
-            self.grid_size,
-            default_value=1000.0,
-            dtype=np.float64,
-        )
+        self._create_cell_agents()
 
         self._initialize_apartments()
 
-        self._create_cell_agents()
         self._create_resident_agents()
         # self._create_developer_agents() # TODO: add developer agents
 
-        self._assign_initial_apartments_to_residents()
-
         # --- Data Collector ---
         self.datacollector = DataCollector(
-            model_reporters={
-                # Economic
-                "AveragePropertyValue": lambda m: np.mean(
-                    [a.property_value for a in m.agents_by_type.get(cell_agent, [])]
-                ),
-                "AverageRent": lambda m: np.mean(m.rent_layer.data),
-                "PropertyValueGini": lambda m: gini_coefficient(
-                    [a.property_value for a in m.agents_by_type.get(cell_agent, [])]
-                ),
-                "VacancyRate": lambda m: sum(
-                    len(s) for s in m.empty_apartments_layer.data.flatten()
-                )
-                / sum(len(a) for a in m.apartments_layer.data.flatten()),
-                # Social
-                "SettledResidents": lambda m: sum(
-                    1 for a in m.agents_by_type.get(resident_agent, []) if a.is_settled
-                ),
-                "DisplacedResidents": lambda m: sum(
-                    1
-                    for a in m.agents_by_type.get(resident_agent, [])
-                    if not a.is_settled
-                ),
+             model_reporters={
+            #     # Economic
+            #     "AveragePropertyValue": lambda m: np.mean(
+            #         [a.property_value for a in m.agents_by_type.get(cell_agent, [])]
+            #     ),
+            #     "AverageRent": lambda m: np.mean(m.rent_layer.data),
+            #     "PropertyValueGini": lambda m: gini_coefficient(
+            #         [a.property_value for a in m.agents_by_type.get(cell_agent, [])]
+            #     ),
+            #     "VacancyRate": lambda m: sum(
+            #         len(s) for s in m.empty_apartments_layer.data.flatten()
+            #     )
+            #     / sum(len(a) for a in m.apartments_layer.data.flatten()),
+            #     # Social
+            #     "SettledResidents": lambda m: sum(
+            #         1 for a in m.agents_by_type.get(resident_agent, []) if a.is_settled
+            #     ),
+            #     "DisplacedResidents": lambda m: sum(
+            #         1
+            #         for a in m.agents_by_type.get(resident_agent, [])
+            #         if not a.is_settled
+            #     ),
                 "AverageHappiness": lambda m: np.mean(
                     [
                         a.happiness_factor
                         for a in m.agents_by_type.get(resident_agent, [])
-                        if a.is_settled
                     ]
                 ),
-                "AverageTenure": lambda m: np.mean(
-                    [
-                        a.time_since_last_move
-                        for a in m.agents_by_type.get(resident_agent, [])
-                        if a.is_settled
-                    ]
-                ),
-                # Development
-                "UpgradedProperties": lambda m: sum(
-                    1 for a in m.agents_by_type.get(cell_agent, []) if a.is_upgraded
-                ),
-            }
+                "HomelessnessRate": lambda m: sum(1 for a in m.agents_by_type.get(resident_agent, []) if a.apartment is None)
+                    / m.num_residents,
+                "HouseOwnershipRate": lambda m: sum(1 for a in m.agents_by_type.get(resident_agent, []) if a.apt_owned)
+                    / m.num_residents,
+            #     "AverageTenure": lambda m: np.mean(
+            #         [
+            #             a.time_since_last_move
+            #             for a in m.agents_by_type.get(resident_agent, [])
+            #             if a.is_settled
+            #         ]
+            #     ),
+            #     # Development
+            #     "UpgradedProperties": lambda m: sum(
+            #         1 for a in m.agents_by_type.get(cell_agent, []) if a.is_upgraded
+            #     ),
+             }
         )
 
     def _create_cell_agents(self):
@@ -155,13 +122,9 @@ class GentrificationModel(Model):
                     (x - self.grid_size / 2) ** 2 + (y - self.grid_size / 2) ** 2
                 ) ** 0.5
                 location_factor = 1 / (distance_to_center + 1)
-                # Property value is computed based on summarized value of its apartments
-                # property_value = (
-                #     random.uniform(50, 150) * location_factor
-                # ) # prev
 
-                apartments_count = len(self.apartments_layer.data[x, y])
-                property_value = sum(a.rent for a in self.apartments_layer.data[x, y])
+                apartments_count = 0 #TODO len(self.apartments_layer.data[x, y])
+                property_value = 0 #TODO sum(a.rent for a in self.apartments_layer.data[x, y])
                 # ! TODO: take under account location_factor
 
                 logging.info(
@@ -170,9 +133,7 @@ class GentrificationModel(Model):
                     "  • Location factor    : %.2f\n"
                     "  • Property value     : %.2f\n"
                     "  • Apartments count   : %d\n"
-                    "  • Avg rent           : %.2f\n"
-                    "  • Max rent           : %.2f\n"
-                    "  • Min rent           : %.2f",
+                    "  • Avg rent           : %.2f\n",
                     x,
                     y,
                     distance_to_center,
@@ -180,20 +141,29 @@ class GentrificationModel(Model):
                     property_value,
                     apartments_count,
                     property_value / apartments_count if apartments_count > 0 else 0,
-                    max(apt.rent for apt in self.apartments_layer.data[x, y]),
-                    min(apt.rent for apt in self.apartments_layer.data[x, y]),
                 )
 
-                cell = cell_agent(self, property_value, location_factor)
-                self.grid.place_agent(cell, (x, y))
+                bills = np.random.normal(loc=1000.0, scale=100.0)
+                cell = cell_agent(self, property_value, location_factor, bills, (x, y))
+                self.cell_agents_layer.set_cell((x, y), cell)
 
     def _create_resident_agents(self):
+        av_apt_to_buy = set((x,y) for x in range(self.grid_size) for y in range(self.grid_size) if self.cell_agents_layer.data[x,y].apartments_to_buy)
+        
         for _ in range(self.num_residents):
             income = random.choice(self.residents_income)
-            resident = resident_agent(self, income)
-            x, y = self.random.randrange(self.grid_size), self.random.randrange(
-                self.grid_size
-            )
+            
+            # if random.random() < 0.3: # 30% chance to start with an owned apartment
+            #     x, y = random.choice(list(av_apt_to_buy))
+            #     apt_index = self.cell_agents_layer.data[x, y].apartments_to_buy.pop()
+            #     apartment = self.cell_agents_layer.data[x, y].apartments[apt_index]
+            #     resident = resident_agent(self, income, apartment)
+            #     if not self.cell_agents_layer.data[x, y].apartments_to_buy:
+            #         av_apt_to_buy.remove((x,y))
+            # else:
+            x, y = random.randrange(self.grid_size), random.randrange(self.grid_size)
+            resident = resident_agent(self, income, None)
+
             self.grid.place_agent(resident, (x, y))
 
     def _create_developer_agents(self):
@@ -205,38 +175,38 @@ class GentrificationModel(Model):
             self.grid.place_agent(developer, (x, y))
 
     def _initialize_apartments(self):
-        for x in range(self.grid_size):
-            for y in range(self.grid_size):
-                num_apts = np.random.randint(
-                    1, 5
-                )  # TODO select different max apartments number based on the cell type
-                apartments = [
-                    Apartment(
-                        position=(x, y),
-                        index=i,
-                        rent=np.random.randint(
-                            2000, 10000
-                        ),  # TODO: adjust rents ranges based on the cell type, use different distribution than uniform
-                        occupied=False,
-                    )
-                    for i in range(num_apts)
-                ]
-                self.apartments_layer.set_cell((x, y), apartments)
-                self.empty_apartments_layer.set_cell(
-                    (x, y), set(range(len(apartments)))
+        for cell in self.cell_agents_layer.data.flatten():
+            num_apts = 5 # TODO select different max apartments number based on the cell type
+
+            apartments = [
+                Apartment(
+                    position=(cell.position[0], cell.position[1]),
+                    index=i,
+                    bills=cell.bills,
+                    rent=random.randint(1000, 3000), #TODO change that
+                    occupied=False,
                 )
-                if apartments:
-                    self.rent_layer.set_cell(
-                        (x, y), np.mean([apt.rent for apt in apartments])
-                    )
-                else:
-                    # The cell type is not residential
-                    self.rent_layer.set_cell((x, y), 0)
+                for i in range(num_apts)
+            ]
+
+            cell.apartments = apartments
+            cell.apartments_to_buy = set() #TODO
+            cell.apartments_to_rent = set(range(len(apartments)))
 
     def _assign_initial_apartments_to_residents(self):
         logging.info("Assigning initial apartments...")
+
         residents = self.agents_by_type[resident_agent]
+        unassigned_residents = []
         for resident in residents:
+            if self.empty_apartments_layer.data[resident.pos[0], resident.pos[1]]:
+                apt_index = self.empty_apartments_layer.data[resident.pos[0], resident.pos[1]].pop()
+                apartment = self.apartments_layer.data[resident.pos[0], resident.pos[1]][apt_index]
+                resident.assign_apartment(apartment)
+            else:
+                unassigned_residents.append(resident)
+        
+        for resident in unassigned_residents:
             assigned = False
             attempts = 0
             while not assigned and attempts < self.grid_size**2:
@@ -288,6 +258,14 @@ class GentrificationModel(Model):
         #         self.rent_layer.set_cell((x, y), new_rent)
 
         # Activate agents
-        self.agents.shuffle().do("step")
+        # Execute cell agents' steps once, before other agents
+        for cell in self.cell_agents_layer.data.flatten():
+            cell.step()
+
+        # Then activate all other agents (excluding cell agents)
+        non_cell_agents = [agent for agent in self.agents if not isinstance(agent, cell_agent)]
+        self.random.shuffle(non_cell_agents)
+        for agent in non_cell_agents:
+            agent.step()
 
         self.datacollector.collect(self)

@@ -10,8 +10,7 @@ from mesa.visualization import (
     make_plot_component,
 )
 
-from agents import cell_agent, resident_agent, developer_agent
-from model import GentrificationModel
+from model import GentrificationModel, cell_agent, resident_agent, developer_agent
 
 
 def agent_portrayal(agent):
@@ -25,7 +24,7 @@ def agent_portrayal(agent):
             "linewidth": 2,
         }
     elif isinstance(agent, resident_agent):
-        color = to_rgba("yellow") if agent.is_settled else to_rgba("red")
+        color = to_rgba("green") if agent.apartment is not None else to_rgba("red")
         return {
             "marker": "o",
             "color": color,
@@ -95,9 +94,17 @@ population_plot = make_plot_component(
 )
 
 stability_plot = make_plot_component(
-    {"AverageTenure": "blue", "AverageHappiness": "lime"},
+    {
+        #"AverageTenure": "blue", 
+        "AverageHappiness": "lime"},
     post_process=post_process_lines,
 )
+
+homeownership_plot = make_plot_component(
+    {"HomelessnessRate": "red", "HouseOwnershipRate": "brown"},
+    post_process=post_process_lines,
+)
+
 
 market_plot = make_plot_component(
     {"VacancyRate": "gray", "UpgradedProperties": "purple"},
@@ -140,11 +147,12 @@ page = SolaraViz(
         model_description,
         renderer,
         # AnalysisTabs, // TODO: optionally use tabs
-        economic_plot,
-        population_plot,
+        # economic_plot,
+        # population_plot,
         stability_plot,
-        market_plot,
-        inequality_plot,
+        homeownership_plot,
+        # market_plot,
+        # inequality_plot,
     ],
     name="Urban Growth and Gentrification Model",
 )
