@@ -1,3 +1,4 @@
+import pickle
 import mesa
 import solara
 import solara.lab
@@ -50,10 +51,11 @@ def agent_portrayal(agent):
 
 
 model_params = {
-    "grid_size": Slider("Grid size", value=3, min=3, max=25, step=1),
-    "num_residents": Slider("Number of Residents", value=10, min=10, max=200, step=10),
-    "num_developers": Slider("Number of Developers", value=2, min=2, max=20, step=2),
-    "num_landlords": Slider("Number of Landlords", value=2, min=2, max=20, step=2),
+    "grid_size": Slider("Grid size", value=10, min=3, max=25, step=1),
+    "num_residents": Slider("Number of Residents", value=2000, min=10, max=400, step=10),
+    "num_developers": Slider("Number of Developers", value=5, min=2, max=20, step=2),
+    "num_landlords": Slider("Number of Landlords", value=70, min=2, max=20, step=2),
+    "gov_developer": Slider("Government Developer", value=0, min=0, max=1, step=1),
     "residents_income": [4242, 4242, 4500, 5080, 5680, 6427, 7365, 8567, 10409, 14224],
 }
 
@@ -110,9 +112,18 @@ homeownership_plot = make_plot_component(
     post_process=post_process_lines,
 )
 
+homeownership_top10_plot = make_plot_component(
+    {"HomelessnessTop10Percent": "red", "HouseOwnershipTop10Percent": "green", "RentRateTop10Percent": "black"},
+    post_process=post_process_lines,
+)
+
+homeownership_bottom10_plot = make_plot_component(
+    {"HomelessnessBottom10Percent": "red", "HouseOwnershipBottom10Percent": "green", "RentRateBottom10Percent": "black"},
+    post_process=post_process_lines,
+)
 
 market_plot = make_plot_component(
-    {"VacancyRate": "gray", "UpgradedProperties": "purple"},
+    {"HousesToRent": "red", "HousesToSell": "green"},
     post_process=post_process_lines,
 )
 
@@ -120,6 +131,27 @@ inequality_plot = make_plot_component(
     {"PropertyValueGini": "magenta"},
     post_process=post_process_lines,
 )
+
+developers_capital = make_plot_component(
+    {"DeveloperCapital": "purple"},
+    post_process=post_process_lines,
+)
+
+landlords_capital = make_plot_component(
+    {"LandlordCapital": "green"},
+    post_process=post_process_lines,
+)
+
+landlords_owned_properties = make_plot_component(
+    {"LandlordOwnedProperties": "blue"},
+    post_process=post_process_lines,   
+)
+
+residents_count = make_plot_component(
+    {"ResidentsCount": "orange"},
+    post_process=post_process_lines,
+)
+
 
 # developer_plot = make_plot_component(
 #     {"DeveloperCapitalAM": "green", "DeveloperCapitalBM": "purple"},
@@ -152,22 +184,36 @@ renderer.post_process = post_process_space
 
 model_instance = GentrificationModel(**model_params)
 
+# for _ in range(750):
+#     model_instance.step()
+
+# #plot the model state at the end of the run
+# pickle.dump(model_instance.datacollector.get_model_vars_dataframe(), open("model_instance.pkl", "wb"))
+
 page = SolaraViz(
     model_instance,
     model_params=model_params,
     components=[
         model_description,
-        renderer,
+        # renderer,
         average_sell_price,
         # AnalysisTabs, // TODO: optionally use tabs
         economic_plot,
         # population_plot,
-        stability_plot,
+        
+        # stability_plot,
         homeownership_plot,
+        homeownership_top10_plot,
+        homeownership_bottom10_plot,
         # developer_plot,
-        # market_plot,
+        market_plot,
         # inequality_plot,
+        developers_capital,
+        landlords_capital,
+        landlords_owned_properties,
+        residents_count,
     ],
+    render_interval=5,
     name="Urban Growth and Gentrification Model",
 )
 page  # This is required for Solara to render the page
