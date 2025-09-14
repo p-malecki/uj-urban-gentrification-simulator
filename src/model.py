@@ -6,13 +6,13 @@ from mesa.space import PropertyLayer
 from mesa.visualization import Slider
 import random
 import numpy as np
-import time
 
 from model_elements.cell_agent import CellAgent
 from model_elements.resident_agent import ResidentAgent
 from model_elements.developer_agent import DeveloperAgent
 from model_elements.landlord_agent import LandlordAgent
 from model_elements.gov_developer import GovDeveloper
+from model_elements.constants import *
 from helpers import gini_coefficient
 
 # --- SETUP LOGGING ---
@@ -31,6 +31,7 @@ class GentrificationModel(Model):
         num_landlords: int = 5,
         gov_developer: int = 0,
         residents_income: list[float] = None,
+        ad_valorem_tax: bool = False,
     ):
         super().__init__()
         self.step_count = 0
@@ -39,9 +40,11 @@ class GentrificationModel(Model):
         self.num_developers = num_developers.value if isinstance(num_developers, Slider) else num_developers
         self.num_landlords = num_landlords.value if isinstance(num_landlords, Slider) else num_landlords
         self.residents_income = residents_income if residents_income is not None else [10000, 20000, 30000]
+        self.ad_valorem_tax = ad_valorem_tax
+
         self.recent_sell_prices: list[float] = []
         self.recent_rent_prices: list[float] = []
-        self.max_recent_prices = 50
+        self.max_recent_prices = 20
 
         self.grid = MultiGrid(self.grid_size, self.grid_size, torus=False)
 
@@ -66,10 +69,7 @@ class GentrificationModel(Model):
         self._create_developer_agents()
 
         if gov_developer:
-            gov_dev = GovDeveloper(self)
-            self.grid.place_agent(gov_dev, (0, 0))
-            self.num_developers += 1
-            logging.info(f"Government Developer added. Total developers: {self.num_developers}.")
+            self.add_gov_developer()
 
         # --- Data Collector ---
         self.datacollector = DataCollector(
@@ -175,6 +175,12 @@ class GentrificationModel(Model):
              }
         )
 
+    def add_gov_developer(self):
+        gov_dev = GovDeveloper(self)
+        self.grid.place_agent(gov_dev, (0, 0))
+        self.num_developers += 1
+        logging.info(f"🏛️ Government Developer added.")
+
     def _create_cell_agents(self):
         for x in range(self.grid_size):
             for y in range(self.grid_size):
@@ -203,22 +209,16 @@ class GentrificationModel(Model):
 
     def step(self):
         self.step_count += 1
-        # logging.info(f"--- Step {self.step_count} ---")
 
-        if self.step_count % 12 == 0:
-            # inflation = np.random.normal(loc=0.03, scale=0.02)
-            # constants.HOUSE_BUILD_COST *= (1 + inflation)
-            # self.residents_income = [income * (1 + inflation) for income in self.residents_income]
+        # if self.step_count % 10 == 0:
+        #     for _ in range(random.randint(1, 3)):#int(self.num_residents + 1 - self.num_residents):
+        #         income = random.choice(self.residents_income)
+        #         x, y = random.randrange(self.grid_size), random.randrange(self.grid_size)
+        #         resident = ResidentAgent(self, income)
+        #         self.num_residents += 1
 
-            for _ in range(int(self.num_residents * 1.001 + 1) - self.num_residents):
-                income = random.choice(self.residents_income)
-                x, y = random.randrange(self.grid_size), random.randrange(self.grid_size)
-                resident = ResidentAgent(self, income)
-                self.num_residents += 1
+        #         self.grid.place_agent(resident, (x, y))
 
-                self.grid.place_agent(resident, (x, y))
-
-        # Execute cell agents' steps once, before other agents
         for cell in self.cell_agents_layer.data.flatten():
             cell.step(self.step_count)
 
@@ -232,20 +232,18 @@ class GentrificationModel(Model):
         self.random.shuffle(landlords)
         for landlord in landlords:
             landlord.step()
+            
         avg_rent = np.mean([cell.get_avg_rent() for cell in self.cell_agents_layer.data.flatten()])
         avg_price = np.mean([cell.get_avg_cost() for cell in self.cell_agents_layer.data.flatten()])
-
-        start_time = time.time()
         residents = list(self.agents_by_type.get(ResidentAgent, []))
         self.random.shuffle(residents)
         for resident in residents:
             resident.step(self.step_count, avg_rent, avg_price)
-        logging.info(f"Resident agents step time: {time.time() - start_time:.2f} seconds")
 
-        if self.step_count % 10 == 0:
-            self.datacollector.collect(self)
+        self.datacollector.collect(self)
 
         if len(self.recent_sell_prices) > self.max_recent_prices:
             self.recent_sell_prices = self.recent_sell_prices[-self.max_recent_prices:]
         if len(self.recent_rent_prices) > self.max_recent_prices:
             self.recent_rent_prices = self.recent_rent_prices[-self.max_recent_prices:]
+

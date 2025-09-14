@@ -7,7 +7,7 @@ import numpy as np
 from model_elements.constants import *
 
 class ResidentAgent(Agent):
-    def __init__(self, model, income, searching_radius=1):
+    def __init__(self, model, income, searching_radius=2):
         super().__init__(model)
         self.income = income * 0.6  # assume residents spend 50% of income on housing
 
