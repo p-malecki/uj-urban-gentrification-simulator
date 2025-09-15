@@ -13,6 +13,7 @@ from mesa.visualization import (
 )
 
 from model import GentrificationModel, CellAgent, ResidentAgent, DeveloperAgent, LandlordAgent
+import threading
 
 
 def agent_portrayal(agent):
@@ -55,7 +56,7 @@ model_params = {
     "grid_size": Slider("Grid size", value=10, min=3, max=25, step=1),
     "num_residents": Slider("Number of Residents", value=2000, min=1000, max=4000, step=250),
     "num_developers": Slider("Number of Developers", value=5, min=2, max=20, step=2),
-    "num_landlords": Slider("Number of Landlords", value=25, min=2, max=70, step=2),
+    "num_landlords": Slider("Number of Landlords", value=50, min=2, max=70, step=2),
     "gov_developer": Slider("Government Developer", value=0, min=0, max=1, step=1),
     "residents_income": [4242, 4242, 4500, 5080, 5680, 6427, 7365, 8567, 10409, 14224],
 }
@@ -183,31 +184,42 @@ renderer = make_space_component(
 )
 renderer.post_process = post_process_space
 
-model_instance = GentrificationModel(**model_params)
+for i in range(6,10):
+    model_instance = GentrificationModel(**model_params)
 
-for _ in range(2500):
-    model_instance.step()
+    for _ in range(2500):
+        model_instance.step()
 
-model_instance_gov_intervention = deepcopy(model_instance)
-model_instance_gov_intervention.add_gov_developer()
+    model_instance_gov_intervention = deepcopy(model_instance)
+    model_instance_gov_intervention.add_gov_developer()
 
-model_instance_ad_valorem = deepcopy(model_instance)
-model_instance_ad_valorem.ad_valorem_tax = True
+    model_instance_ad_valorem = deepcopy(model_instance)
+    model_instance_ad_valorem.ad_valorem_tax = True
 
-model_instance_both = deepcopy(model_instance)
-model_instance_both.add_gov_developer()
-model_instance_both.ad_valorem_tax = True
+    model_instance_both = deepcopy(model_instance)
+    model_instance_both.add_gov_developer()
+    model_instance_both.ad_valorem_tax = True
 
-for _ in range(10000):
-    model_instance_gov_intervention.step()
-    model_instance_ad_valorem.step()
-    model_instance_both.step()
-    model_instance.step()
+    def run_steps(model, steps):
+        for _ in range(steps):
+            model.step()
 
-pickle.dump(model_instance_gov_intervention.datacollector.get_model_vars_dataframe(), open("results_gov.pkl", "wb"))
-pickle.dump(model_instance.datacollector.get_model_vars_dataframe(), open("results_no_gov.pkl", "wb"))
-pickle.dump(model_instance_ad_valorem.datacollector.get_model_vars_dataframe(), open("results_ad_valorem.pkl", "wb"))
-pickle.dump(model_instance_both.datacollector.get_model_vars_dataframe(), open("results_both.pkl", "wb"))
+    threads = [
+        threading.Thread(target=run_steps, args=(model_instance_gov_intervention, 10000)),
+        threading.Thread(target=run_steps, args=(model_instance_ad_valorem, 10000)),
+        threading.Thread(target=run_steps, args=(model_instance_both, 10000)),
+        threading.Thread(target=run_steps, args=(model_instance, 10000)),
+    ]
+
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    pickle.dump(model_instance_gov_intervention.datacollector.get_model_vars_dataframe(), open(f"results/{i}/results_gov.pkl", "wb"))
+    pickle.dump(model_instance.datacollector.get_model_vars_dataframe(), open(f"results/{i}/results_no_gov.pkl", "wb"))
+    pickle.dump(model_instance_ad_valorem.datacollector.get_model_vars_dataframe(), open(f"results/{i}/results_ad_valorem.pkl", "wb"))
+    pickle.dump(model_instance_both.datacollector.get_model_vars_dataframe(), open(f"results/{i}/results_both.pkl", "wb"))
 
 
 

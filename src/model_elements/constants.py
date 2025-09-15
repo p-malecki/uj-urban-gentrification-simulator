@@ -13,4 +13,4 @@ START_RENT_PRICE = 1000
 
 DEVELOPER_CELL_LOOKUP_COUNT = 5
 
-AD_VALOREM_TAX = [(0.01, 4), (0.02, 6), (0.04, 8)] #(tax_rate, apts_threshold) - if owner has more apartments than threshold, tax_rate is applied to apartments
+AD_VALOREM_TAX = [(0.01, 4), (0.02, 6), (0.04, 8), (0.08, 12)] #(tax_rate, apts_threshold) - if owner has more apartments than threshold, tax_rate is applied to apartments
